@@ -1,8 +1,6 @@
 # listadmin
 A modern listadmin for mailman
 
-![screenshot](https://raw.githubusercontent.com/romaia/listadmin/master/listadmin.png)
-
 This will read your current listadmin configuration file (not all options
 are supported yet), and has a somewhat similar behaviour.
 
@@ -13,12 +11,14 @@ maintaining lists a lot easier.
 
 Keyboard shortcuts:
 
-  - a: Aprove a message
-  - d: Discard a message
-  - s: Skip the message
-  - q: Quit without submiting changes
+  - `a`: Aprove a message
+  - `d`: Discard a message
+  - `s`: Skip the message
+  - `q`: Quit without submiting changes
 
 TODO:
-  - [ ]: Process more listadmin options
-  - [ ]: Save list of discarded/approved senders/subjects reuse later
-  - [ ]: Loading progress.
+- [ ] Process more listadmin options
+- [ ] Save list of discarded/approved senders/subjects reuse later
+- [ ] Loading progress.
+
+![screenshot](https://raw.githubusercontent.com/romaia/listadmin/master/listadmin.png)
