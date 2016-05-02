@@ -61,6 +61,7 @@ class Message(object):
         self.received = self._get_data(rows[3]).text.decode('utf8')
         headers = self._get_data(rows[8])()[0]
         self.excerpt = self._get_data(rows[9])()[0].text.decode('utf8')
+        self.auto = False
 
         self.id = headers.attrs['name'].split('-')[1]
         self.action = self.DEFER
@@ -87,9 +88,11 @@ class Message(object):
 
         if self.subject == msg.subject:
             print 'approving based on subject'
+            self.auto = True
             return self.approve()
         if self.sender == msg.sender:
             print 'approving based on sender'
+            self.auto = True
             return self.approve()
 
     def auto_discard(self, msg):
@@ -99,9 +102,11 @@ class Message(object):
 
         if self.subject == msg.subject and len(self.subject) > 60:
             print 'discarding based on subject'
+            self.auto = True
             return self.discard()
         if self.sender == msg.sender:
             print 'discarding based on sender'
+            self.auto = True
             return self.discard()
 
 
@@ -169,10 +174,18 @@ class Form(GladeDelegate):
             renderer.set_property('weight', pango.WEIGHT_BOLD)
         return text
 
+    def _format_action(self, obj, data):
+        values = {0: 'defer', 1: 'approve', 2: 'reject', 3: 'discard'}
+        value = values[obj.action]
+        if obj.auto:
+            return 'auto ' + value
+        return value
+
     def setup_widgets(self):
         self.messages.set_columns([
             Column('id', data_type=int, sorted=True),
-            Column('action', data_type=int),
+            Column('action', data_type=int, format_func=self._format_action,
+                   format_func_data=True),
             Column('received', data_type=str),
             Column('sender', data_type=str),
             Column('subject', expand=True, data_type=str),
