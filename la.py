@@ -183,10 +183,10 @@ class Form(GladeDelegate):
 
     def setup_widgets(self):
         self.messages.set_columns([
-            Column('id', data_type=int, sorted=True),
+            Column('id', data_type=int, sorted=True, visible=False),
             Column('action', data_type=int, format_func=self._format_action,
                    format_func_data=True),
-            Column('received', data_type=str),
+            Column('received', data_type=str, visible=False),
             Column('sender', data_type=str),
             Column('subject', expand=True, data_type=str),
         ])
@@ -208,10 +208,21 @@ class Form(GladeDelegate):
             gtk.main_do_event(event)
         gdk.event_handler_set(event_handler)
 
+    def update_progress(self):
+        current = len([i for i in self.messages if i.action != 0])
+        total = len(self.messages)
+        if total:
+            self.progress.set_fraction(float(current) / total)
+        else:
+            self.progress.set_fraction(1)
+        self.progress.set_text('%s: %d / %d' % (self.l.address, current, total))
+
     def update_list(self):
-        self.list_name.set_text(self.l.address)
+        self._current = 0
+        self.progress.set_text('Fetching %s...' % self.l.address)
         self.l.fetch()
         self.messages.add_list(self.l.messages, clear=True)
+        self.update_progress()
         if self.l.messages:
             self.messages.select(self.l.messages[0])
         self.messages.grab_focus()
@@ -228,12 +239,14 @@ class Form(GladeDelegate):
         self.messages.update(msg)
         self.auto_approve(msg)
         self.select_next()
+        self.update_progress()
 
     def discard(self, msg):
         msg.discard()
         self.messages.update(msg)
         self.auto_discard(msg)
         self.select_next()
+        self.update_progress()
 
     def skip(self, msg):
         self.select_next()
@@ -241,16 +254,19 @@ class Form(GladeDelegate):
     def auto_approve(self, msg):
         index = self.messages.index(self.msg)
         for other in self.messages[index + 1:]:
-            other.auto_approve(msg)
+            if other.auto_approve(msg):
+                self.update_progress()
 
     def auto_discard(self, msg):
         index = self.messages.index(self.msg)
         for other in self.messages[index + 1:]:
-            other.auto_discard(msg)
+            if other.auto_discard(msg):
+                self.update_progress()
 
     def submit(self):
-        self.l.submit()
-        self.messages.clear()
+        if len(self.messages):
+            self.l.submit()
+            self.messages.clear()
         if self.lists:
             self.l = self.lists.pop(0)
             self.update_list()
