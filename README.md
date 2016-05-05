@@ -15,10 +15,12 @@ Keyboard shortcuts:
   - `d`: Discard a message
   - `s`: Skip the message
   - `q`: Quit without submiting changes
+  - `p`: Post changes to this list
 
 TODO:
 - [ ] Process more listadmin options
 - [ ] Save list of discarded/approved senders/subjects reuse later
 - [ ] Loading progress.
+- [x] List progress
 
 ![screenshot](https://raw.githubusercontent.com/romaia/listadmin/master/listadmin.png)

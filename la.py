@@ -2,6 +2,7 @@
 import os
 import requests
 from bs4 import BeautifulSoup as bs
+import json
 
 import pygtk
 pygtk.require('2.0')
@@ -53,7 +54,7 @@ def read_config():
 class Message(object):
     (DEFER, APPROVE, REJECT, DISCARD) = range(4)
 
-    def __init__(self, table):
+    def __init__(self, table, stats):
         rows = table.find_all(name='tr', recursive=False)
         self.sender = self._get_data(rows[0]).text.decode('utf8')
         self.subject = self._get_data(rows[1]).text.decode('utf8')
@@ -65,6 +66,11 @@ class Message(object):
 
         self.id = headers.attrs['name'].split('-')[1]
         self.action = self.DEFER
+        discards = stats['discard'].get(self.sender, 0)
+        self.discards = discards
+        if discards > 4:
+            self.action = self.DISCARD
+            self.auto = True
 
     @property
     def approved(self):
@@ -113,7 +119,6 @@ class Message(object):
 class List(object):
 
     def __init__(self, address, config):
-        self.config = config
         self.address = address
         name, domain = address.split('@')
         subdomain = domain.split('.')[0]
@@ -125,28 +130,29 @@ class List(object):
 
         self.messages = []
 
-    def fetch(self):
-        print 'reading', self.url, self.params
+    def fetch(self, stats=None):
+        print 'reading', self.url
         data = requests.post(self.url + '?details=all', data=self.params)
         self.cookies = data.cookies
-        self._parse(data.text)
+        self._parse(data.text, stats)
 
-    def _parse(self, data):
-        print 'parsing'
+    def _parse(self, data, stats=None):
+        print 'parsing...',
         tree = bs(data, 'lxml')
+        print 'done'
         form = tree.form
         if not form:
             return
 
         tables = form.find_all(name='table', recursive=False)
-        self.messages = [Message(table) for table in tables]
-        print '%s messages' % len(self.messages)
+        self.messages = [Message(table, stats) for table in tables]
 
     def submit(self):
         form_data = {}
         for msg in self.messages:
             form_data[msg.id] = msg.action
 
+        print 'submiting...',
         requests.post(self.url, data=form_data, cookies=self.cookies)
         print 'done'
 
@@ -157,7 +163,13 @@ class Form(GladeDelegate):
     def __init__(self, lists):
         self.lists = lists
         self.l = lists.pop(0)
+        self.stats = {}
+        self.stats_file = os.path.expanduser('~/.listadmin.stats')
+        if os.path.exists(self.stats_file):
+            self.stats = json.load(open(self.stats_file))
 
+        self.stats.setdefault('discard', {})
+        self.stats.setdefault('approve', {})
         GladeDelegate.__init__(self,
                                gladefile="browser.ui",
                                delete_handler=self.quit_if_last)
@@ -187,6 +199,7 @@ class Form(GladeDelegate):
             Column('action', data_type=int, format_func=self._format_action,
                    format_func_data=True),
             Column('received', data_type=str, visible=False),
+            Column('discards', data_type=int),
             Column('sender', data_type=str),
             Column('subject', expand=True, data_type=str),
         ])
@@ -197,18 +210,24 @@ class Form(GladeDelegate):
         def event_handler(event):
             if event.type == gdk.KEY_PRESS:
                 if event.keyval == gtk.keysyms.q:
-                    gtk.main_quit()
-
-                if self.msg and event.keyval == gtk.keysyms.a:
+                    self.quit()
+                elif event.keyval == gtk.keysyms.p:
+                    self.submit()
+                elif self.msg and event.keyval == gtk.keysyms.a:
                     self.approve(self.msg)
-                if self.msg and event.keyval == gtk.keysyms.d:
+                elif self.msg and event.keyval == gtk.keysyms.d:
                     self.discard(self.msg)
-                if self.msg and event.keyval == gtk.keysyms.s:
+                elif self.msg and event.keyval == gtk.keysyms.s:
                     self.skip(self.msg)
             gtk.main_do_event(event)
         gdk.event_handler_set(event_handler)
 
-    def update_progress(self):
+    def update_progress(self, msg=None, action=None):
+        """Update the progress bar.
+
+        Also, if message and action are not None, it will also update the stats
+        based on those parameters
+        """
         current = len([i for i in self.messages if i.action != 0])
         total = len(self.messages)
         if total:
@@ -217,14 +236,21 @@ class Form(GladeDelegate):
             self.progress.set_fraction(1)
         self.progress.set_text('%s: %d / %d' % (self.l.address, current, total))
 
+        if msg and action:
+            self.stats[action].setdefault(msg.sender, 0)
+            self.stats[action][msg.sender] += 1
+
     def update_list(self):
         self._current = 0
         self.progress.set_text('Fetching %s...' % self.l.address)
-        self.l.fetch()
+        self.l.fetch(self.stats)
         self.messages.add_list(self.l.messages, clear=True)
         self.update_progress()
         if self.l.messages:
             self.messages.select(self.l.messages[0])
+        else:
+            # There are no messages. Just skip to the next list
+            gtk.idle_add(self.submit)
         self.messages.grab_focus()
 
     def select_next(self):
@@ -239,14 +265,14 @@ class Form(GladeDelegate):
         self.messages.update(msg)
         self.auto_approve(msg)
         self.select_next()
-        self.update_progress()
+        self.update_progress(msg, 'approve')
 
     def discard(self, msg):
         msg.discard()
         self.messages.update(msg)
         self.auto_discard(msg)
         self.select_next()
-        self.update_progress()
+        self.update_progress(msg, 'discard')
 
     def skip(self, msg):
         self.select_next()
@@ -255,13 +281,13 @@ class Form(GladeDelegate):
         index = self.messages.index(self.msg)
         for other in self.messages[index + 1:]:
             if other.auto_approve(msg):
-                self.update_progress()
+                self.update_progress(other, 'approve')
 
     def auto_discard(self, msg):
         index = self.messages.index(self.msg)
         for other in self.messages[index + 1:]:
             if other.auto_discard(msg):
-                self.update_progress()
+                self.update_progress(other, 'discard')
 
     def submit(self):
         if len(self.messages):
@@ -271,7 +297,13 @@ class Form(GladeDelegate):
             self.l = self.lists.pop(0)
             self.update_list()
         else:
-            gtk.main_quit()
+            self.quit()
+
+    def quit(self):
+        with open(self.stats_file, 'w') as fh:
+            json.dump(self.stats, fh)
+
+        gtk.main_quit()
 
     #
     # Callbacks
