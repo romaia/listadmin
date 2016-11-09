@@ -73,8 +73,8 @@ class Message(object):
             self.auto = True
 
     @property
-    def approved(self):
-        return self.action == self.APPROVE
+    def domain(self):
+        return self.sender.split('@')[-1]
 
     def _get_data(self, row):
         return row.find_all('td')[1]
@@ -106,7 +106,7 @@ class Message(object):
         if self.action != self.DEFER:
             return
 
-        if self.subject == msg.subject and len(self.subject) > 60:
+        if self.subject == msg.subject and len(self.subject) > 30:
             print 'discarding based on subject'
             self.auto = True
             return self.discard()
@@ -181,9 +181,15 @@ class Form(GladeDelegate):
 
     def _on_messages__cell_data_func(self, column, renderer, msg, text):
         unread = msg.action == 0
+        probable = msg.domain in ('gmail.com', 'yahoo.com', 'yahoo.com.br',
+                                  'hotmail.com', 'hotmail.com.br')
+
         renderer.set_property('weight-set', unread)
+        renderer.set_property('foreground-set', probable)
         if unread:
             renderer.set_property('weight', pango.WEIGHT_BOLD)
+        if probable:
+            renderer.set_property('foreground', 'red')
         return text
 
     def _format_action(self, obj, data):
@@ -282,12 +288,14 @@ class Form(GladeDelegate):
         for other in self.messages[index + 1:]:
             if other.auto_approve(msg):
                 self.update_progress(other, 'approve')
+                self.messages.update(other)
 
     def auto_discard(self, msg):
         index = self.messages.index(self.msg)
         for other in self.messages[index + 1:]:
             if other.auto_discard(msg):
                 self.update_progress(other, 'discard')
+                self.messages.update(other)
 
     def submit(self):
         if len(self.messages):
