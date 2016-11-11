@@ -66,6 +66,8 @@ class Message(object):
 
         self.id = headers.attrs['name'].split('-')[1]
         self.action = self.DEFER
+
+        # XXX: Improve this based on domain and subject
         discards = stats['discard'].get(self.sender, 0)
         self.discards = discards
         if discards > 4:
@@ -163,13 +165,7 @@ class Form(GladeDelegate):
     def __init__(self, lists):
         self.lists = lists
         self.l = lists.pop(0)
-        self.stats = {}
-        self.stats_file = os.path.expanduser('~/.listadmin.stats')
-        if os.path.exists(self.stats_file):
-            self.stats = json.load(open(self.stats_file))
-
-        self.stats.setdefault('discard', {})
-        self.stats.setdefault('approve', {})
+        self._load_stats()
         GladeDelegate.__init__(self,
                                gladefile="browser.ui",
                                delete_handler=self.quit_if_last)
@@ -178,6 +174,17 @@ class Form(GladeDelegate):
         self.setup_widgets()
 
         self.update_list()
+
+    def _load_stats(self):
+        self.stats = {}
+        self.stats_file = os.path.expanduser('~/.listadmin.stats')
+        if os.path.exists(self.stats_file):
+            self.stats = json.load(open(self.stats_file))
+
+        self.stats.setdefault('discard', {})
+        self.stats.setdefault('approve', {})
+        self.stats.setdefault('subject_discard', {})
+        self.stats.setdefault('subject_approve', {})
 
     def _on_messages__cell_data_func(self, column, renderer, msg, text):
         unread = msg.action == 0
@@ -207,6 +214,7 @@ class Form(GladeDelegate):
             Column('received', data_type=str, visible=False),
             Column('discards', data_type=int),
             Column('sender', data_type=str),
+            Column('domain', data_type=str, visible=False),
             Column('subject', expand=True, data_type=str),
         ])
         self.messages.set_cell_data_func(self._on_messages__cell_data_func)
@@ -245,12 +253,22 @@ class Form(GladeDelegate):
         if msg and action:
             self.stats[action].setdefault(msg.sender, 0)
             self.stats[action][msg.sender] += 1
+            self.stats['subject_' + action].setdefault(msg.subject, 0)
+            self.stats['subject_' + action][msg.subject] += 1
 
     def update_list(self):
         self._current = 0
         self.progress.set_text('Fetching %s...' % self.l.address)
         self.l.fetch(self.stats)
-        self.messages.add_list(self.l.messages, clear=True)
+        self.messages.clear()
+        first_of_email = {}
+        for m in self.l.messages:
+            parent = first_of_email.get(m.sender)
+            if not parent:
+                first_of_email[m.sender] = m
+
+            self.messages.append(parent, m)
+
         self.update_progress()
         if self.l.messages:
             self.messages.select(self.l.messages[0])
@@ -285,14 +303,14 @@ class Form(GladeDelegate):
 
     def auto_approve(self, msg):
         index = self.messages.index(self.msg)
-        for other in self.messages[index + 1:]:
+        for other in self.messages[index + 1:] + self.messages.get_descendants(msg):
             if other.auto_approve(msg):
                 self.update_progress(other, 'approve')
                 self.messages.update(other)
 
     def auto_discard(self, msg):
         index = self.messages.index(self.msg)
-        for other in self.messages[index + 1:]:
+        for other in self.messages[index + 1:] + self.messages.get_descendants(msg):
             if other.auto_discard(msg):
                 self.update_progress(other, 'discard')
                 self.messages.update(other)
