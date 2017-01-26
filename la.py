@@ -4,8 +4,6 @@ import requests
 from bs4 import BeautifulSoup as bs
 import json
 
-import pygtk
-pygtk.require('2.0')
 import pango
 import gtk
 from gtk import gdk
@@ -146,11 +144,14 @@ class List(object):
         if not form:
             return
 
+        csrf_token = form.find_all(name='input', recursive=False)[0]
+        self.csrf_token = csrf_token.attrs['value']
+
         tables = form.find_all(name='table', recursive=False)
         self.messages = [Message(table, stats) for table in tables]
 
     def submit(self):
-        form_data = {}
+        form_data = {'csrf_token': self.csrf_token}
         for msg in self.messages:
             form_data[msg.id] = msg.action
 
