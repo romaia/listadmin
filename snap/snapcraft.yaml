@@ -1,12 +1,12 @@
 name: glistadmin
-version: '0.1' # just for humans, typically '1.2+git' or '1.3.2'
+version: '0.1'
 summary: A modern listadmin for mailman
 description: |
     This will read your current listadmin configuration file (not all options
     are supported yet), and has a somewhat similar behaviour.
 
-grade: devel # must be 'stable' to release into candidate/stable channels
-confinement: devmode # use 'strict' once you have the right plugs and slots
+grade: stable
+confinement: strict
 
 parts:
   gla:
@@ -16,8 +16,9 @@ parts:
     requirements: requirements.txt
     stage-packages:
         - python-gtk2
+    after: [desktop-gtk2]
 
 apps:
     glistadmin:
-        command: bin/glistadmin
-        plugs: [home]
+        command: desktop-launch $SNAP/bin/glistadmin
+        plugs: [x11, home, network, network-control, mount-observe]

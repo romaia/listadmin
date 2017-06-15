@@ -1,3 +1,4 @@
 requests
 kiwi-gtk
 bs4
+lxml
