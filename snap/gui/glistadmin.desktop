@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Encoding=UTF-8
+Name=GListAdmin
+GenericName=GListAdmin
+Exec=glistadmin
+Terminal=false
+Categories=Application;Office;Finance;
+StartupNotify=true
