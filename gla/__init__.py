@@ -3,6 +3,7 @@ import os
 import requests
 from bs4 import BeautifulSoup as bs
 import json
+import pkg_resources
 
 import pango
 import gtk
@@ -167,8 +168,9 @@ class Form(GladeDelegate):
         self.lists = lists
         self.l = lists.pop(0)
         self._load_stats()
+        gladefile = pkg_resources.resource_filename('gla', 'data/browser.ui')
         GladeDelegate.__init__(self,
-                               gladefile="browser.ui",
+                               gladefile=gladefile,
                                delete_handler=self.quit_if_last)
         self.proxy = None
         self.msg = None
